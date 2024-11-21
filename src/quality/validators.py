@@ -34,14 +34,15 @@ class DataValidator:
                 column = rule['column_name']
                 if column in df.columns:
                     null_ratio = df[column].isnull().mean()
-                    status = 'PASSED' if null_ratio <= rule['threshold'] else 'FAILED'
+                    threshold = float(rule['threshold'])
+                    status = 'PASSED' if null_ratio <= threshold else 'FAILED'
                     
                     metrics.append({
                         'table_name': table_name,
                         'column_name': column,
                         'metric_type': 'NULL_RATIO',
                         'metric_value': float(null_ratio),
-                        'threshold_value': rule['threshold'],
+                        'threshold_value': threshold,
                         'status': status
                     })
                     
@@ -62,14 +63,15 @@ class DataValidator:
                 column = rule['column_name']
                 if column in df.columns:
                     duplicate_ratio = 1 - df[column].nunique() / len(df)
-                    status = 'PASSED' if duplicate_ratio <= rule['threshold'] else 'FAILED'
+                    threshold = float(rule['threshold'])
+                    status = 'PASSED' if duplicate_ratio <= threshold else 'FAILED'
                     
                     metrics.append({
                         'table_name': table_name,
                         'column_name': column,
                         'metric_type': 'DUPLICATE_RATIO',
                         'metric_value': float(duplicate_ratio),
-                        'threshold_value': rule['threshold'],
+                        'threshold_value': threshold,
                         'status': status
                     })
                     
@@ -90,29 +92,29 @@ class DataValidator:
                 column = rule['column_name']
                 if column in df.columns:
                     rule_def = rule['rule_definition']
-                    min_val = rule_def.get('min')
-                    max_val = rule_def.get('max')
+                    min_val = float(rule_def.get('min', float('-inf')))
+                    max_val = float(rule_def.get('max', float('inf')))
                     
-                    if min_val is not None and max_val is not None:
-                        out_of_range_ratio = ((df[column] < min_val) | (df[column] > max_val)).mean()
-                        status = 'PASSED' if out_of_range_ratio <= rule['threshold'] else 'FAILED'
-                        
-                        metrics.append({
-                            'table_name': table_name,
-                            'column_name': column,
-                            'metric_type': 'OUT_OF_RANGE_RATIO',
-                            'metric_value': float(out_of_range_ratio),
-                            'threshold_value': rule['threshold'],
-                            'status': status
-                        })
-                        
-                        if status == 'FAILED':
-                            self._create_anomaly(
-                                table_name=table_name,
-                                anomaly_type='OUT_OF_RANGE_VALUES',
-                                description=f'Column {column} has {out_of_range_ratio:.2%} values outside range [{min_val}, {max_val}]',
-                                severity=rule['severity']
-                            )
+                    out_of_range_ratio = ((df[column] < min_val) | (df[column] > max_val)).mean()
+                    threshold = float(rule['threshold'])
+                    status = 'PASSED' if out_of_range_ratio <= threshold else 'FAILED'
+                    
+                    metrics.append({
+                        'table_name': table_name,
+                        'column_name': column,
+                        'metric_type': 'OUT_OF_RANGE_RATIO',
+                        'metric_value': float(out_of_range_ratio),
+                        'threshold_value': threshold,
+                        'status': status
+                    })
+                    
+                    if status == 'FAILED':
+                        self._create_anomaly(
+                            table_name=table_name,
+                            anomaly_type='OUT_OF_RANGE_VALUES',
+                            description=f'Column {column} has {out_of_range_ratio:.2%} values outside range [{min_val}, {max_val}]',
+                            severity=rule['severity']
+                        )
         return metrics
     
     def validate_patterns(self, df: pd.DataFrame, table_name: str, rules: List[Dict]) -> List[Dict]:
@@ -125,15 +127,16 @@ class DataValidator:
                     pattern = rule['rule_definition'].get('pattern')
                     if pattern:
                         # Convert pattern check to boolean mask
-                        invalid_ratio = df[column].str.match(pattern).mean()
-                        status = 'PASSED' if invalid_ratio <= rule['threshold'] else 'FAILED'
+                        invalid_ratio = 1 - df[column].astype(str).str.match(pattern).mean()
+                        threshold = float(rule['threshold'])
+                        status = 'PASSED' if invalid_ratio <= threshold else 'FAILED'
                         
                         metrics.append({
                             'table_name': table_name,
                             'column_name': column,
                             'metric_type': 'INVALID_PATTERN_RATIO',
                             'metric_value': float(invalid_ratio),
-                            'threshold_value': rule['threshold'],
+                            'threshold_value': threshold,
                             'status': status
                         })
                         
@@ -149,17 +152,24 @@ class DataValidator:
     def _create_anomaly(self, table_name: str, anomaly_type: str, description: str, severity: str):
         """Create a new anomaly record."""
         query = """
-            INSERT INTO data_anomalies (table_name, anomaly_type, description, severity)
-            VALUES (:table_name, :anomaly_type, :description, :severity)
+            INSERT INTO data_anomalies (
+                table_name, column_name, anomaly_type, 
+                detection_time, severity, details
+            )
+            VALUES (
+                :table_name, :column_name, :anomaly_type,
+                CURRENT_TIMESTAMP, :severity, :details
+            )
         """
         with self.engine.begin() as conn:
             conn.execute(
                 text(query),
                 {
                     'table_name': table_name,
+                    'column_name': table_name.split('.')[-1],
                     'anomaly_type': anomaly_type,
-                    'description': description,
-                    'severity': severity
+                    'severity': severity,
+                    'details': json.dumps({'description': description})
                 }
             )
     

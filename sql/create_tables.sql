@@ -50,12 +50,13 @@ CREATE TABLE IF NOT EXISTS quality_rules (
 
 CREATE TABLE IF NOT EXISTS quality_metrics (
     metric_id SERIAL PRIMARY KEY,
-    rule_id INTEGER REFERENCES quality_rules(rule_id),
-    check_timestamp TIMESTAMP NOT NULL,
+    table_name VARCHAR(100) NOT NULL,
+    column_name VARCHAR(100) NOT NULL,
+    metric_type VARCHAR(50) NOT NULL,
     metric_value DECIMAL(10,4),
-    pass_flag BOOLEAN,
-    sample_size INTEGER,
-    fail_count INTEGER,
+    threshold_value DECIMAL(10,4),
+    status VARCHAR(20),
+    check_timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     details JSONB
 );
 
