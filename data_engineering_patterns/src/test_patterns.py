@@ -3,6 +3,7 @@ from database_singleton import DatabaseConnection
 from data_source_factory import DataSourceFactory
 from pipeline_observer import DataPipeline, EmailNotifier, LoggingObserver, MetricsCollector
 import pandas as pd
+from typing import BinaryIO
 
 def main():
     # Get the absolute path to the sample data
